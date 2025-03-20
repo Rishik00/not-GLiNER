@@ -33,6 +33,7 @@ def process_entities(dataset):
             continue
 
         all_data.append({"tokenized_text": tokenized_text, "ner": entity_spans})
+        
     return all_data
 
 
