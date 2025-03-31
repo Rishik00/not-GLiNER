@@ -1,18 +1,22 @@
 import json
 import re
-import ast
 from tqdm import tqdm
+import logging
 from datasets import load_dataset
 
-def load_datasets(langs, name, split):
-    dataset_dict = {f'dataset_{da}': None for da in langs}
-    for da in langs:
-        data = load_dataset(name, da, split)
-        dataset_dict[f'dataset_{da}'] = data
-    return dataset_dict
+def load_datasets(langs, name, split, do_eval):
+    endata = load_dataset(name, split=split, languages=langs[0])
+    hi_data = load_dataset(name, split=split, languages=langs[1])   
 
-def tokenize_text(text, lang):
-    return re.findall(r'\w+(?:[-_]\w+)*|\S', text)
+    en_data = endata['train'] if split == 'train' else endata['test']
+    hi_data = hi_data['train'] if split == 'train' else hi_data['test']
+
+    if do_eval:
+        en_data_val = en_data['validation'] if split == 'train' else en_data['train']
+        hi_data_val = hi_data['validation'] if split == 'train' else hi_data['train']   
+        return en_data, hi_data, en_data_val, hi_data_val
+        
+    return en_data, hi_data
 
 def random_sampling(seed):
     pass
@@ -22,6 +26,7 @@ def extract_entity_spans(entry, id_to_label):
 
     entity_spans = []
     current_span = []
+
     entity_label = None
     start_idx = None  # Track the starting index of an entity
 
@@ -51,14 +56,12 @@ def extract_entity_spans(entry, id_to_label):
 
     return {'ner': entity_spans, 'tokenized_text': entry['tokens']}
 
-def extract_entity_spans(en, hi, entry, split='train'):
-    for en_entity, hi_entity in zip(en, hi):
-        pass
+def process_data_en(data):
+    """Processes a list of data entries to extract entity spans."""
+    all_data = [extract_entity_spans(entry) for entry in tqdm(data)]
+    return all_data
 
-    processed_data=[]
-    save_data_to_file(processed_data, output_file)
-
-def process_data(data):
+def process_data_hi(data):
     """Processes a list of data entries to extract entity spans."""
     all_data = [extract_entity_spans(entry) for entry in tqdm(data)]
     return all_data
