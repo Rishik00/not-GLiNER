@@ -11,7 +11,9 @@ from transformers import (get_cosine_schedule_with_warmup,
                           get_constant_schedule_with_warmup,
                           get_polynomial_decay_schedule_with_warmup,
                           get_inverse_sqrt_schedule)
-
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
 from gliner import GLiNER
 from gliner.modules.base import load_config_as_namespace
 from gliner.modules.run_evaluation import get_for_all_path
@@ -50,6 +52,7 @@ def save_top_k_checkpoints(model: GLiNER, save_path: str, checkpoint: int, top_k
 # train function
 def train(model, optimizer, train_data, num_steps=1000, eval_every=100, log_dir="logs", val_data_dir="none",
           warmup_ratio=0.1, train_batch_size=8, scheduler_type="cosine", save_total_limit = 5, device='cuda'):
+    losses = []
     # Set the model to training mode
     model.train()
 
@@ -133,6 +136,7 @@ def train(model, optimizer, train_data, num_steps=1000, eval_every=100, log_dir=
             scaler.step(optimizer)  # Update model parameters
             scaler.update()  # Update scaler for next iteration
             scheduler.step()  # Adjust learning rate
+
         except Exception as e:
             # Clean up if an error occurs during training
             print(f"Error: {e}")
@@ -141,7 +145,9 @@ def train(model, optimizer, train_data, num_steps=1000, eval_every=100, log_dir=
 
         # Update progress bar with current training status
         description = f"step: {step} | epoch: {step // len(train_loader)} | loss: {loss.item():.2f}"
-        pbar.set_description(description)
+        if step % 10 == 0:
+            pbar.set_description(description)
+            losses.append(loss.item())
 
         # Periodically evaluate the model and save a checkpoint
         if (step + 1) % eval_every == 0:
@@ -154,6 +160,15 @@ def train(model, optimizer, train_data, num_steps=1000, eval_every=100, log_dir=
             # Ensure the model is still in training mode after evaluation
             model.train()
 
+def plot_loss_curve(losses: int, num_steps:int):
+    plt.figure(figsize=(20, 14))
+    sns.lineplot(x=np.linspace(0, num_steps, len(losses)), y=losses)
+    plt.xlabel("Iterations")
+    plt.ylabel("Loss")
+    plt.title("Loss Curve")
+    plt.xlim(0, num_steps)
+    plt.grid(True)
+    plt.show()
 
 def create_parser():
     parser = argparse.ArgumentParser(description="Span-based NER")
