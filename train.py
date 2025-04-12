@@ -159,6 +159,7 @@ def train(model, optimizer, train_data, num_steps=1000, eval_every=100, log_dir=
 
             # Ensure the model is still in training mode after evaluation
             model.train()
+    plot_loss_curve(losses=losses, num_steps=num_steps  )
 
 def plot_loss_curve(losses: int, num_steps:int):
     plt.figure(figsize=(20, 14))
