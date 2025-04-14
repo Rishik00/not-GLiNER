@@ -159,9 +159,10 @@ def train(model, optimizer, train_data, num_steps=1000, eval_every=100, log_dir=
 
             # Ensure the model is still in training mode after evaluation
             model.train()
+
     plot_loss_curve(losses=losses, num_steps=num_steps  )
 
-def plot_loss_curve(losses: int, num_steps:int):
+def plot_loss_curve(losses: list, num_steps: int):
     plt.figure(figsize=(20, 14))
     sns.lineplot(x=np.linspace(0, num_steps, len(losses)), y=losses)
     plt.xlabel("Iterations")
@@ -169,14 +170,13 @@ def plot_loss_curve(losses: int, num_steps:int):
     plt.title("Loss Curve")
     plt.xlim(0, num_steps)
     plt.grid(True)
-    plt.show()
+    plt.savefig("GLINER_loss.png")
 
 def create_parser():
     parser = argparse.ArgumentParser(description="Span-based NER")
     parser.add_argument("--config", type=str, default="config.yaml", help="Path to config file")
     parser.add_argument('--log_dir', type=str, default='logs', help='Path to the log directory')
     return parser
-
 
 if __name__ == "__main__":
     # Parse command-line arguments
