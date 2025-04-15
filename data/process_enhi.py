@@ -1,143 +1,150 @@
 import json
-import re
+import argparse
 from typing import List
 from tqdm import tqdm
 import logging
 from datasets import load_dataset
 
+# Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+load_json: bool = True
+
 def get_id_to_label(data):
+    logger.info("Extracting label to ID mappings.")
     label_column_name = "ner_tags"
     features = data['train'].features
     label_list = features[label_column_name].feature.names
-    label_to_id = {label_list[i]: features[label_column_name].feature.str2int( label_list[i] ) for i in range(len(label_list))}
-    id_to_label = {features[label_column_name].feature.str2int( label_list[i] ): label_list[i] for i in range(len(label_list))}
-
+    label_to_id = {label: features[label_column_name].feature.str2int(label) for label in label_list}
+    id_to_label = {features[label_column_name].feature.str2int(label): label for label in label_list}
+    logger.info("Label mappings extracted.")
     return id_to_label, label_to_id
 
 def load_json_dataset(file_name):
+    logger.info(f"Loading JSON dataset from: {file_name}")
     with open(file_name, 'r') as json_file:
-        contents = json.load(file_name)
-    
+        contents = json.load(json_file)
+    logger.info("JSON data loaded successfully.")
     return contents
 
 def download_data(lang: str = 'en', split: str = 'train'):
     en_dataset_name = 'unimelb-nlp/wikiann'
     hi_dataset_name = 'ai4bharat/naamapadam'
 
+    logger.info(f"Downloading data for language: {lang}")
     if lang == 'en':
+        if load_json:
+            logger.info("Using JSON file instead of Huggingface dataset for English.")
+            data = load_json_dataset(file_name='samantar_ner_data.json')
+            return data, None, None
         data = load_dataset(en_dataset_name, 'en')
         idtl, ltoid = get_id_to_label(data)
         return data[split], idtl, ltoid
 
     elif lang == 'hi':
+        logger.info("Using Huggingface dataset for Hindi.")
         data = load_dataset(hi_dataset_name, 'as')
         idtl, ltoid = get_id_to_label(data)
         return data[split], idtl, ltoid
 
 def extract_entity_spans(entry, id_to_label):
-    assert len(entry['tokens']) == len(entry['ner_tags'])  # Ensure alignment
-
+    assert len(entry['tokens']) == len(entry['ner_tags']), "Mismatch between tokens and NER tags"
     entity_spans = []
     current_span = []
-
     entity_label = None
-    start_idx = None  # Track the starting index of an entity
+    start_idx = None
 
     for idx, (token, tag) in enumerate(zip(entry['tokens'], entry['ner_tags'])):
-        label = id_to_label[tag]
+        label = id_to_label[tag] if id_to_label else tag
 
-        if label.startswith('B-'):  # Start a new entity
-            if current_span:  
-                entity_spans.append([start_idx, idx - 1, entity_label])  # Store previous entity
+        if label.startswith('B-'):
+            if current_span:
+                entity_spans.append([start_idx, idx - 1, entity_label])
             current_span = [token]
             entity_label = label.split('-')[1]
-            start_idx = idx  # Mark start index of new    entity
+            start_idx = idx
 
-        elif label.startswith('I-'):  # Continuation of an entity
-            if entity_label == label.split('-')[1]:  # Ensure it's the same entity type
+        elif label.startswith('I-'):
+            if entity_label == label.split('-')[1]:
                 current_span.append(token)
-            else:  
+            else:
                 if current_span:
                     entity_spans.append([start_idx, idx - 1, entity_label])
-                    
                 current_span = [token]
                 entity_label = label.split('-')[1]
-                start_idx = idx  # Reset start index
+                start_idx = idx
 
-        if idx % 10000 == 0:
-            logger.info("Done procerssing 10000")
-        
-        if idx == 10000:
-            break
-    
-    # Store any remaining entity
     if current_span:
         entity_spans.append([start_idx, len(entry['tokens']) - 1, entity_label])
+
     return {'ner': entity_spans, 'tokenized_text': entry['tokens']}
 
 def save_data_to_file(data, filepath):
-    """Saves the processed data to a JSON file."""
+    logger.info(f"Saving data to file: {filepath}")
     with open(filepath, 'w') as f:
         json.dump(data, f)
+    logger.info(f"Data successfully saved to {filepath}")
 
 def mix_data(enfile: str, hifile: str):
     try:
+        logger.info(f"Loading English data from {enfile}")
         with open(enfile, "r", encoding="utf-8") as file1:
             data1 = json.load(file1)
-        # Load second file
+
+        logger.info(f"Loading Hindi data from {hifile}")
         with open(hifile, "r", encoding="utf-8") as file2:
             data2 = json.load(file2)
 
     except Exception as e:
-        logger.error(f"Something is wrong with file extraction: {e}")
+        logger.error(f"File loading failed: {e}")
+        return
 
-    # Determine the minimum length to ensure parallel structure
+    logger.info("Mixing English and Hindi data.")
     min_length = min(len(data1), len(data2))
-
-    # Interleave data from both sources
     mixed_data = []
+
     for i in range(min_length):
         mixed_data.append(data1[i])
         mixed_data.append(data2[i])
 
-    # Add any remaining data (if one file is longer)
     mixed_data.extend(data1[min_length:])
     mixed_data.extend(data2[min_length:])
 
-    # Save to a new file
+    output_file = "gliner_data.json"
     try:
-        output_file = "gliner_data.json"
+        logger.info(f"Saving mixed data to {output_file}")
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(mixed_data, f, ensure_ascii=False, indent=4)
     except Exception as e:
-        logger.error(f'Something is wrong with file outputting: {e}')
+        logger.error(f"Failed to save mixed data: {e}")
+        return
 
-    logger.info(f'Parallel mixed NER data saved to {output_file}')
+    logger.info(f"Mixed NER data saved to {output_file}")
 
-def main(langs: List[str], limit: int=1000):
+def main(langs: List[str], limit: int = 1000):
     for lang in langs:
-        
+        logger.info(f"Starting processing for language: {lang}")
         file_name = f'{lang}_file.json'
         data, idtol, _ = download_data(lang)
 
-        logger.info(f"Processing data for language: {lang}")
-
         loop_end = min(limit, len(data)) if limit != 0 else len(data)
-        data = data.select(range(loop_end))
-        
-        all_data = [extract_entity_spans(entry, idtol) for entry in tqdm(data)]
-        logger.info(f"Finished processing data for language: {lang}")
-        
+        if hasattr(data, 'select'):
+            logger.info(f"Selecting first {loop_end} samples using 'select'")
+            data = data.select(range(loop_end))
+        else:
+            logger.info(f"Selecting first {loop_end} samples using slicing")
+            data = data[:loop_end]
+
+        all_data = [extract_entity_spans(entry, idtol) for entry in tqdm(data, desc=f"Processing {lang}")]
+        logger.info(f"Finished extracting spans for {lang}.")
+
         save_data_to_file(all_data, filepath=file_name)
 
     mix_data('en_file.json', 'hi_file.json')
-    
+
 if __name__ == "__main__":
-    # download the pile-ner data: "wget https://huggingface.co/datasets/Universal-NER/Pile-NER-type/blob/main/train.json"
-    output_file = 'gliner_train_multi.json'
-    
+    logger.info("Starting the multilingual NER processing pipeline.")
     languages = ['en', 'hi']
     main(langs=languages)
+    logger.info("All tasks completed.")
