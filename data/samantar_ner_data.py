@@ -79,7 +79,7 @@ class NERPipeline:
                 # Map entity predictions to words
                 for entity in entities:
                     entity_text = entity["word"]
-                    entity_tag = entity["entity_group"]
+                    entity_tag = entity["entity"]
                     
                     # Filter out MISC tags if needed
                     if "MISC" in entity_tag:
@@ -126,7 +126,6 @@ class NERPipeline:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         gc.collect()
-
 
 def create_ner_data_from_corpus(split, limit=None, batch_size=8, output_file="samantar_data.json", 
                                dataset_name="ai4bharat/samanantar", lang="as", model_name="dslim/bert-base-NER"):
