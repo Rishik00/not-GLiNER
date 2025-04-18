@@ -44,7 +44,7 @@ def download_data(lang: str = 'en', split: str = 'train'):
 
     elif lang == 'hi':
         logger.info("Using Huggingface dataset for Hindi.")
-        data = load_dataset(hi_dataset_name, 'as')
+        data = load_dataset(hi_dataset_name, lang)
         idtl, ltoid = get_id_to_label(data)
         return data[split], idtl, ltoid
 

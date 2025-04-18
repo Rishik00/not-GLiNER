@@ -28,19 +28,26 @@ class NERPipeline:
             self.device = 0 if torch.cuda.is_available() else -1
             logger.info(f"Using device: {'CUDA' if self.device == 0 else 'CPU'}")
             
-            # Initialize the pipeline
+            # self.ner_pipeline = pipeline(
+            #     "ner",
+            #     model=model_name,
+            #     aggregation_strategy="simple",  # Merge spans with same entity
+            #     device=self.device
+            # )
+
             self.ner_pipeline = pipeline(
-                "token-classification",
+                "ner",
                 model=model_name,
-                aggregation_strategy="simple",  # Merge spans with same entity
-                device=self.device
+                tokenizer=model_name, 
+                device=self.device                
             )
-            
+
             self.batch_size = batch_size
             
             # Log model information
             logger.info(f"NER pipeline with model {model_name} loaded successfully")
             logger.info(f"Batch size set to {batch_size}")
+            
             if self.device == 0:
                 logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
         except Exception as e:
@@ -104,7 +111,7 @@ class NERPipeline:
                             
                             break
                 
-                results.append({"text": words, "ner_tags": tags})
+                results.append({"tokens": words, "ner_tags": tags})
             
             return results if len(texts) > 1 else results[0]
             
@@ -123,91 +130,73 @@ class NERPipeline:
 
 def create_ner_data_from_corpus(split, limit=None, batch_size=8, output_file="samantar_data.json", 
                                dataset_name="ai4bharat/samanantar", lang="as", model_name="dslim/bert-base-NER"):
-    """
-    Create NER data from a corpus using the specified model.
-    
-    Args:
-        split: Dataset split to use (train/val/test)
-        limit: Number of examples to process (None for all)
-        batch_size: Batch size for processing
-        output_file: Output file path
-        dataset_name: HuggingFace dataset name
-        lang: Language code for the dataset
-        model_name: NER model to use
-    """
-    try:
-        # Initialize pipeline
-        logger.info(f"Initializing NER pipeline with model {model_name}")
-        ner_pipeline = NERPipeline(model_name, batch_size=batch_size)
-        
-        # Load dataset
-        logger.info(f"Loading dataset {dataset_name} (language: {lang})")
-        try:
-            ds = load_dataset(dataset_name, lang)
-            logger.info(f"Dataset loaded successfully. Split sizes: {ds}")
-        except Exception as e:
-            logger.error(f"Error loading dataset: {str(e)}")
-            raise
-        
-        if split not in ds:
-            logger.error(f"Split '{split}' not found in dataset. Available splits: {list(ds.keys())}")
-            raise ValueError(f"Invalid split: {split}")
-        
-        # Determine how many examples to process
-        total = len(ds[split])
-        limit = min(limit, total) if limit is not None else total
-        logger.info(f"Processing {limit} examples from {split} split (total available: {total})")
-        
-        # Process dataset
-        results = []
-        
-        # Process in batches with progress bar
-        logger.info(f"Starting NER processing")
-        start_time = time.time()
-        
-        for i in tqdm(range(0, limit, batch_size), desc="Processing batches"):
-            batch_end = min(i + batch_size, limit)
-            batch_examples = ds[split].select(range(i, batch_end))
-            batch_texts = [example['src'] for example in batch_examples]
-            
-            try:
-                # Process the batch
-                batch_results = ner_pipeline.predict(batch_texts)
-                results.extend(batch_results)
-                
-                # Log performance metrics periodically
-                if i % 100 == 0 or batch_end == limit:
-                    elapsed = time.time() - start_time
-                    examples_processed = batch_end
-                    examples_per_second = examples_processed / elapsed if elapsed > 0 else 0
-                    
-                    # Save intermediate results
-                    if i > 0:
-                        temp_file = f"{os.path.splitext(output_file)[0]}_temp.json"
-                        with open(temp_file, "w", encoding="utf-8") as f:
-                            json.dump(results, f, ensure_ascii=False)
-                        logger.info(f"Saved intermediate results to {temp_file}")
-                
-            except Exception as e:
-                logger.error(f"Error processing batch {i//batch_size}: {str(e)}")
-                # Continue with next batch rather than failing entirely
-                continue
-                
-        # Save results
-        logger.info(f"Saving {len(results)} processed examples to {output_file}")
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(results, f, ensure_ascii=False, indent=2)
-        
-        elapsed_time = time.time() - start_time
-        logger.info(f"Processing completed in {elapsed_time:.2f} seconds "
-                   f"({limit/elapsed_time:.2f} examples/second)")
-        
-        return results
-        
-    except Exception as e:
-        logger.error(f"Error in create_ner_data_from_corpus: {str(e)}")
-        raise
 
+    # Initialize pipeline
+    logger.info(f"Initializing NER pipeline with model {model_name}")
+    ner_pipeline = NERPipeline(model_name, batch_size=batch_size)
+    
+    # Load dataset
+    logger.info(f"Loading dataset {dataset_name} (language: {lang})")
+    try:
+        ds = load_dataset(dataset_name, lang)
+        logger.info(f"Dataset loaded successfully. Split sizes: {ds}")
+    except Exception as e:
+        logger.error(f"Error loading dataset: {str(e)}")
+        raise
+    
+    if split not in ds:
+        logger.error(f"Split '{split}' not found in dataset. Available splits: {list(ds.keys())}")
+        raise ValueError(f"Invalid split: {split}")
+    
+    # Determine how many examples to process
+    total = len(ds[split])
+    limit = min(limit, total) if limit is not None else total
+    logger.info(f"Processing {limit} examples from {split} split (total available: {total})")
+    
+    # Process dataset
+    results = []
+    
+    # Process in batches with progress bar
+    logger.info(f"Starting NER processing")
+    start_time = time.time()
+    
+    for i in tqdm(range(0, limit, batch_size), desc="Processing batches"):
+        batch_end = min(i + batch_size, limit)
+        batch_examples = ds[split].select(range(i, batch_end))
+        batch_texts = [example['src'] for example in batch_examples]
+        
+        try:
+            # Process the batch
+            batch_results = ner_pipeline.predict(batch_texts)
+            results.extend(batch_results)
+            
+            # Log performance metrics periodically
+            if i % 100 == 0 or batch_end == limit:
+                elapsed = time.time() - start_time
+                examples_processed = batch_end
+                examples_per_second = examples_processed / elapsed if elapsed > 0 else 0
+                
+                # Save intermediate results
+                if i > 0:
+                    temp_file = f"{os.path.splitext(output_file)[0]}_temp.json"
+                    with open(temp_file, "w", encoding="utf-8") as f:
+                        json.dump(results, f, ensure_ascii=False)
+                    logger.info(f"Saved intermediate results to {temp_file}")
+            
+        except Exception as e:
+            logger.error(f"Error processing batch {i//batch_size}: {str(e)}")
+            continue
+            
+    # Save results
+    logger.info(f"Saving {len(results)} processed examples to {output_file}")
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+    
+    elapsed_time = time.time() - start_time
+    logger.info(f"Processing completed in {elapsed_time:.2f} seconds "
+                f"({limit/elapsed_time:.2f} examples/second)")
+    
+    return results
 
 def get_memory_usage():
     """Get current memory usage of the process."""
@@ -216,6 +205,9 @@ def get_memory_usage():
         "RAM": f"{process.memory_info().rss / (1024 * 1024):.2f} MB",
         "GPU": f"{torch.cuda.memory_allocated() / (1024 * 1024):.2f} MB" if torch.cuda.is_available() else "N/A"
     }
+
+def clean_data():
+    pass
 
 
 if __name__ == "__main__":
