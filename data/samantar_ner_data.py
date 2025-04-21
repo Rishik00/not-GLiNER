@@ -67,6 +67,9 @@ class NERPipeline:
             
             # Process texts with the pipeline
             ner_results = self.ner_pipeline(texts)
+
+            if isinstance(ner_results, list) and ner_results == []:
+                return []
             
             # If only one text was provided, wrap result in a list
             if isinstance(texts, str) or (isinstance(texts, list) and len(texts) == 1):
@@ -78,7 +81,6 @@ class NERPipeline:
                 
                 # Map entity predictions to words
                 for entity in entities:
-                    entity_text = entity["word"]
                     entity_tag = entity["entity"]
                     
                     # Filter out MISC tags if needed
@@ -88,9 +90,6 @@ class NERPipeline:
                     # Find the word position for this entity
                     start_char = entity["start"]
                     end_char = entity["end"]
-                    
-                    # Count words up to the start position
-                    word_count = 0
                     char_count = 0
                     
                     for i, word in enumerate(words):
@@ -119,14 +118,6 @@ class NERPipeline:
             logger.error(f"Error in prediction: {str(e)}")
             return [{"text": [], "ner_tags": []}] * len(texts)
 
-    def __del__(self):
-        """Clean up resources when object is destroyed."""
-        if hasattr(self, 'ner_pipeline'):
-            del self.ner_pipeline
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        gc.collect()
-
 def create_ner_data_from_corpus(split, limit=None, batch_size=8, output_file="samantar_data.json", 
                                dataset_name="ai4bharat/samanantar", lang="as", model_name="dslim/bert-base-NER"):
 
@@ -145,7 +136,7 @@ def create_ner_data_from_corpus(split, limit=None, batch_size=8, output_file="sa
     
     if split not in ds:
         logger.error(f"Split '{split}' not found in dataset. Available splits: {list(ds.keys())}")
-        raise ValueError(f"Invalid split: {split}")
+        return 
     
     # Determine how many examples to process
     total = len(ds[split])
@@ -156,7 +147,7 @@ def create_ner_data_from_corpus(split, limit=None, batch_size=8, output_file="sa
     results = []
     
     # Process in batches with progress bar
-    logger.info(f"Starting NER processing")
+    logger.info(f"Starting processing")
     start_time = time.time()
     
     for i in tqdm(range(0, limit, batch_size), desc="Processing batches"):
@@ -167,21 +158,11 @@ def create_ner_data_from_corpus(split, limit=None, batch_size=8, output_file="sa
         try:
             # Process the batch
             batch_results = ner_pipeline.predict(batch_texts)
-            results.extend(batch_results)
-            
-            # Log performance metrics periodically
-            if i % 100 == 0 or batch_end == limit:
-                elapsed = time.time() - start_time
-                examples_processed = batch_end
-                examples_per_second = examples_processed / elapsed if elapsed > 0 else 0
-                
-                # Save intermediate results
-                if i > 0:
-                    temp_file = f"{os.path.splitext(output_file)[0]}_temp.json"
-                    with open(temp_file, "w", encoding="utf-8") as f:
-                        json.dump(results, f, ensure_ascii=False)
-                    logger.info(f"Saved intermediate results to {temp_file}")
-            
+            if batch_results == []:
+                pass
+            else:
+                results.extend(batch_results)
+
         except Exception as e:
             logger.error(f"Error processing batch {i//batch_size}: {str(e)}")
             continue
@@ -197,17 +178,6 @@ def create_ner_data_from_corpus(split, limit=None, batch_size=8, output_file="sa
     
     return results
 
-def get_memory_usage():
-    """Get current memory usage of the process."""
-    process = psutil.Process(os.getpid())
-    return {
-        "RAM": f"{process.memory_info().rss / (1024 * 1024):.2f} MB",
-        "GPU": f"{torch.cuda.memory_allocated() / (1024 * 1024):.2f} MB" if torch.cuda.is_available() else "N/A"
-    }
-
-def clean_data():
-    pass
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="NER Data Creation Script with HF Pipeline")
@@ -215,18 +185,15 @@ if __name__ == "__main__":
     parser.add_argument("--limit", type=int, default=None, help="Number of examples to process")
     parser.add_argument("--output", type=str, default="samantar_ner_data.json", help="Output filename")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size for processing")
-    parser.add_argument("--dataset", type=str, default="ai4bharat/samanantar", help="HuggingFace dataset name")
+    parser.add_argument("--dataset", type=str, default="ai4bharat/samanantar", help="HuggingFace datas  et name")
     parser.add_argument("--lang", type=str, default="as", help="Language code for the dataset")
     parser.add_argument("--model", type=str, default="dslim/bert-base-NER", help="NER model to use")
     
     args = parser.parse_args()
     
     logger.info(f"Starting script with arguments: {args}")
-    logger.info(f"Initial memory usage: {get_memory_usage()}")
     
     try:
-        start_time = time.time()
-        
         create_ner_data_from_corpus(
             split=args.split,
             limit=args.limit,
@@ -236,10 +203,6 @@ if __name__ == "__main__":
             lang=args.lang,
             model_name=args.model
         )
-        
-        end_time = time.time()
-        logger.info(f"Total execution time: {end_time - start_time:.2f} seconds")
-        logger.info(f"Final memory usage: {get_memory_usage()}")
         
     except Exception as e:
         logger.error(f"Script execution failed: {str(e)}")

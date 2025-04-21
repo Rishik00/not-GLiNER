@@ -15,9 +15,11 @@ def get_id_to_label(data):
     logger.info("Extracting label to ID mappings.")
     label_column_name = "ner_tags"
     features = data['train'].features
+
     label_list = features[label_column_name].feature.names
     label_to_id = {label: features[label_column_name].feature.str2int(label) for label in label_list}
     id_to_label = {features[label_column_name].feature.str2int(label): label for label in label_list}
+    
     logger.info("Label mappings extracted.")
     return id_to_label, label_to_id
 
@@ -29,8 +31,8 @@ def load_json_dataset(file_name):
     return contents
 
 def download_data(lang: str = 'en', split: str = 'train'):
-    en_dataset_name = 'unimelb-nlp/wikiann'
-    hi_dataset_name = 'ai4bharat/naamapadam'
+    en_dataset_name = 'unimelb-nlp/wikiann'  ## for english
+    hi_dataset_name = 'ai4bharat/naamapadam' ## for hindi
 
     logger.info(f"Downloading data for language: {lang}")
     if lang == 'en':
@@ -38,6 +40,7 @@ def download_data(lang: str = 'en', split: str = 'train'):
             logger.info("Using JSON file instead of Huggingface dataset for English.")
             data = load_json_dataset(file_name='samantar_ner_data.json')
             return data, None, None
+        
         data = load_dataset(en_dataset_name, 'en')
         idtl, ltoid = get_id_to_label(data)
         return data[split], idtl, ltoid
@@ -46,6 +49,7 @@ def download_data(lang: str = 'en', split: str = 'train'):
         logger.info("Using Huggingface dataset for Hindi.")
         data = load_dataset(hi_dataset_name, lang)
         idtl, ltoid = get_id_to_label(data)
+
         return data[split], idtl, ltoid
 
 def extract_entity_spans(entry, id_to_label):
@@ -116,10 +120,10 @@ def mix_data(enfile: str, hifile: str):
         logger.info(f"Saving mixed data to {output_file}")
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(mixed_data, f, ensure_ascii=False, indent=4)
+
     except Exception as e:
         logger.error(f"Failed to save mixed data: {e}")
         return
-
     logger.info(f"Mixed NER data saved to {output_file}")
 
 def main(langs: List[str], limit: int = 1000):
